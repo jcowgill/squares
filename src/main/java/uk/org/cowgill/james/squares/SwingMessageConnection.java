@@ -1,7 +1,10 @@
 package uk.org.cowgill.james.squares;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+
 import javax.swing.SwingUtilities;
 
 /**
@@ -11,6 +14,16 @@ import javax.swing.SwingUtilities;
  */
 public abstract class SwingMessageConnection extends MessageConnection
 {
+	/**
+	 * Creates a new message connection using the given socket and callback interface
+	 *
+	 * @param socket the socket this connection will control
+	 */
+	public SwingMessageConnection(SocketChannel socket) throws IOException
+	{
+		super(socket);
+	}
+
 	/**
 	 * Event which occurs when an error is thrown on the reader thread
 	 *
@@ -34,24 +47,37 @@ public abstract class SwingMessageConnection extends MessageConnection
 	/**
 	 * Event which occurs when a graceful close has happened caused by the other connection.
 	 */
-	protected abstract void eventSwingClosed();
+	protected abstract void eventSwingClosed() throws Exception;
 	
 	@Override
-	protected abstract void eventError(Exception e)
+	protected void eventError(final Exception e)
 	{
 		//Forward
-		SwingUtilities.invokeAndWait(new Runnable()
+		try
 		{
-			@Override
-			public void run()
+			SwingUtilities.invokeAndWait(new Runnable()
 			{
-				eventSwingError(e);
-			}
-		});
+				@Override
+				public void run()
+				{
+					eventSwingError(e);
+				}
+			});
+		}
+		catch (InterruptedException e1)
+		{
+			//Throw invocation exception
+			throw new SwingInvocationException(e1);
+		}
+		catch (InvocationTargetException e1)
+		{
+			//Throw invocation exception
+			throw new SwingInvocationException(e1);
+		}
 	}
 	
 	@Override
-	protected abstract void eventRead(ByteBuffer buffer) throws Exception
+	protected void eventRead(final ByteBuffer buffer) throws Exception
 	{
 		try
 		{
@@ -61,28 +87,88 @@ public abstract class SwingMessageConnection extends MessageConnection
 				@Override
 				public void run()
 				{
-					eventRead(buffer);
+					try
+					{
+						eventRead(buffer);
+					}
+					catch (Exception e)
+					{
+						//Wrap exception
+						throw new SwingInvocationException(e);
+					}
 				}
 			});
 		}
 		catch(InvocationTargetException e)
 		{
-			//Rethrow exception
-			throw e.getTargetException();
+			//If invocation, rethrow
+			if(e.getTargetException() instanceof SwingInvocationException)
+			{
+				throw ((SwingInvocationException) e.getTargetException()).getException();
+			}
+			else
+			{
+				//Must be an error
+				throw (Error) e.getTargetException();
+			}
 		}
 	}
 	
 	@Override
-	protected abstract void eventClosed()
+	protected void eventClosed() throws Exception
 	{
-		//Forward
-		SwingUtilities.invokeAndWait(new Runnable()
+		try
 		{
-			@Override
-			public void run()
+			//Forward
+			SwingUtilities.invokeAndWait(new Runnable()
 			{
-				eventClosed();
+				@Override
+				public void run()
+				{
+					try
+					{
+						eventClosed();
+					}
+					catch (Exception e)
+					{
+						//Wrap exception
+						throw new SwingInvocationException(e);
+					}
+				}
+			});
+		}
+		catch(InvocationTargetException e)
+		{
+			//If invocation, rethrow
+			if(e.getTargetException() instanceof SwingInvocationException)
+			{
+				throw ((SwingInvocationException) e.getTargetException()).getException();
 			}
-		});
+			else
+			{
+				//Must be an error
+				throw (Error) e.getTargetException();
+			}
+		}
+	}
+	
+	/**
+	 * Private class used to wrap exceptions which cannot be throw inside the Runnable interface
+	 * 
+	 * @author James
+	 */
+	private static final class SwingInvocationException extends RuntimeException
+	{
+		private static final long serialVersionUID = 1L;
+
+		public SwingInvocationException(Exception e)
+		{
+			super(e);
+		}
+		
+		public Exception getException()
+		{
+			return (Exception) getCause();
+		}
 	}
 }

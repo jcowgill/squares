@@ -24,9 +24,8 @@ public abstract class MessageConnection implements Runnable
 	 * Creates a new message connection using the given socket and callback interface
 	 *
 	 * @param socket the socket this connection will control
-	 * @param callback callback function to call when a message is received
 	 */
-	public MessageConnection(SocketChannel socket)
+	public MessageConnection(SocketChannel socket) throws IOException
 	{
 		//Store socket
 		this.socket = socket;
@@ -50,6 +49,7 @@ public abstract class MessageConnection implements Runnable
 		//Start reader thread
 		readerThread = new Thread(this, "MessageConnection Thread");
 		readerThread.setDaemon(true);
+		readerThread.start();
 	}
 	
 	/**
@@ -94,7 +94,9 @@ public abstract class MessageConnection implements Runnable
 	}
 	
 	/**
-	 * Event which occurs when an error is thrown on the reader thread
+	 * Event which occurs when an error is thrown on the <b>reader thread</b>
+	 *
+	 * Errors which occur when calling sendMsg / close are thrown and not handled by this method.
 	 *
 	 * The connection is automatically closed after this returns.
 	 *
@@ -115,8 +117,10 @@ public abstract class MessageConnection implements Runnable
 	
 	/**
 	 * Event which occurs when a graceful close has happened caused by the other connection.
+	 *
+	 * Any exceptions thrown are forwarded to eventError.
 	 */
-	protected abstract void eventClosed();
+	protected abstract void eventClosed() throws Exception;
 	
 	@Override
 	public void run()
@@ -177,11 +181,31 @@ public abstract class MessageConnection implements Runnable
 			//Notify of the exception
 			eventError(e);
 		}
-		
-		//Shutdown then close the channel
-		this.socket.socket().setSoLinger(true, 10);
-		this.socket.socket().shutdownInput();
-		this.socket.socket().shutdownOutput();
-		this.socket.close();
+		finally
+		{
+			//Shutdown then close the channel
+			try
+			{
+				this.selector.close();
+				this.socket.socket().setSoLinger(true, 10);
+				this.socket.socket().shutdownInput();
+				this.socket.socket().shutdownOutput();
+			}
+			catch(IOException e)
+			{
+				//Ignore this
+			}
+			finally
+			{
+				try
+				{
+					this.socket.close();
+				}
+				catch(IOException e)
+				{
+					//Ignore errors
+				}
+			}
+		}
 	}
 }
