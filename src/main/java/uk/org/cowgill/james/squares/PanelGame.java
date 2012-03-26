@@ -108,17 +108,6 @@ public class PanelGame extends JPanel
 	}
 	
 	/**
-	 * Sets the game state object controlling the game
-	 * 
-	 * @param state game state
-	 */
-	public void setGameState(GameState state)
-	{
-		gameCanvas.state = state;
-		updateGameState();
-	}
-	
-	/**
 	 * Refreshes the game content to match the information in the game state object
 	 */
 	public void updateGameState()
@@ -138,7 +127,6 @@ public class PanelGame extends JPanel
 		private static final long serialVersionUID = 1L;
 		
 		//State of game
-		public GameState state; 
 
 		public GameCanvas()
 		{

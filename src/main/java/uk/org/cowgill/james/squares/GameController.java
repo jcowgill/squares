@@ -12,8 +12,8 @@ import java.nio.charset.CharsetEncoder;
 import java.util.Random;
 
 /**
- * This class controls the game logic and communications with
- * another GameController over the network.
+ * This class controls the communications with
+ * another GameController over the network and the global game state.
  * 
  * This class is not thread safe. All calls to this class MUST be
  * made from the swing event dispatch thread
