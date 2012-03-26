@@ -67,6 +67,16 @@ public class GameController
 	private GameState state = GameState.InitWaiting;
 	
 	/**
+	 * True if I started first this game (or for the next game if state == Ready)
+	 */
+	private boolean myTurnFirst;
+	
+	/**
+	 * True if it is currently my turn
+	 */
+	private boolean myTurn;
+	
+	/**
 	 * The current state of the game
 	 * 
 	 * @author James
@@ -141,8 +151,9 @@ public class GameController
 			@Override
 			protected void eventSwingError(Exception e)
 			{
-				// TODO Auto-generated method stub
-				
+				//TODO Exceptions to handle
+				// IOException - Connection Reset
+				// BufferOverflowException - Bad Message
 			}
 
 			@Override
@@ -154,18 +165,79 @@ public class GameController
 					return;
 				}
 				
-				try
+				//TODO should the errors here be thrown as exceptions and handled in eventSwingError???
+				
+				//What command?
+				switch(buffer.get())
 				{
-					//What command?
-					switch(buffer.get())
-					{
 					case CMD_INIT:
-						//
-					}
-				}
-				catch(BufferOverflowException e)
-				{
-					//
+						//Ignore if not waiting for INIT
+						if(state != GameState.InitWaiting)
+						{
+							break;
+						}
+					
+						//Get version
+						if(buffer.getInt() != PROTOCOL_VERSION)
+						{
+							//TODO Send back error
+						}
+						
+						//Get master status
+						int otherMasterStatus = buffer.getInt();
+						
+						//Validate statuses
+						if((masterStatus == NOT_MASTER && otherMasterStatus == NOT_MASTER) ||
+							(masterStatus != NOT_MASTER && otherMasterStatus != NOT_MASTER))
+						{
+							//TODO Invalid combination
+						}
+						
+						//Get player name
+						String otherName = decodeString(buffer);
+						if(otherName == null)
+						{
+							//TODO malformed string
+						}
+						
+						//Is it my turn first?
+						if(masterStatus == NOT_MASTER)
+						{
+							myTurnFirst = (otherMasterStatus == MASTER_YOU_FIRST);
+						}
+						else
+						{
+							myTurnFirst = (otherMasterStatus == MASTER_ME_FIRST);
+						}
+						
+						//Store player names
+						if(myTurnFirst)
+						{
+							playerNames[1] = otherName;
+						}
+						else
+						{
+							playerNames[1] = playerNames[0];
+							playerNames[0] = otherName;
+						}
+						
+						//Ready to start
+						state = GameState.Ready;
+						
+						//TODO raise ready event
+						break;
+						
+					case CMD_CHAT:
+						//Extract chat message
+						String msg = decodeString(buffer);
+						
+						if(msg == null)
+						{
+							//TODO malformed string
+						}
+						
+						//TODO output message
+						break;
 				}
 			}
 
@@ -191,6 +263,74 @@ public class GameController
 	public void startGame()
 	{
 		//
+	}
+	
+	/**
+	 * Attempts to win the current game
+	 *
+	 * If you're opponent cannot possibly get enough squares, this allows you to win immediately
+	 *
+	 * @param text text to send
+	 * @return false if you cannot win the game immediately
+	 */
+	public boolean win()
+	{
+		//
+	}
+	
+	public void surrender()
+	{
+		//
+	}
+	
+	public void close()
+	{
+		//
+	}
+	
+	public boolean move()
+	{
+		//
+	}
+	
+	/**
+	 * Sends some chat text to the opponent
+	 *
+	 * The opponent must be connected before text is sent
+	 *
+	 * @param text text to send
+	 * @return false if the text was too long or malformed
+	 */
+	public boolean chat(String text)
+	{
+		//Encode message
+		ByteBuffer chatBuf = encodeString(text, 254);
+		if(chatBuf == null)
+		{
+			return false;
+		}
+		
+		//Construct chat message
+		ByteBuffer buf = ByteBuffer.allocate(1 + chatBuf.limit());
+		buf.put(CMD_CHAT);
+		buf.put(chatBuf);
+		buf.flip();
+		
+		//Send message
+		ensureConnected();
+		conn.sendMsg(buf);
+		return true;
+	}
+	
+	/**
+	 * Throws IllegalStateException if not connected
+	 */
+	private void ensureConnected()
+	{
+		if(!conn.isConnected() || state == GameState.InitWaiting)
+		{
+			throw new IllegalStateException("controller is not connected");
+		}
 	}
 	
 	private static final CharsetEncoder strEncoder = Charset.forName("UTF-8").newEncoder();
