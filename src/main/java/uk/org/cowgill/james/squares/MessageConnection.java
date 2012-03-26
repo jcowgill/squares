@@ -55,8 +55,7 @@ public abstract class MessageConnection implements Runnable
 	/**
 	 * Sends the message in the given buffer over the connection
 	 *
-	 * @param socket the socket this connection will control
-	 * @param callback callback function to call when a message is received
+	 * @param buffer the content of the message to send (up to 255 bytes)
 	 */
 	public void sendMsg(ByteBuffer buffer) throws IOException
 	{

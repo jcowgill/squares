@@ -1,7 +1,7 @@
 package uk.org.cowgill.james.squares;
 
 import java.io.IOException;
-import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.channels.SocketChannel;
@@ -15,7 +15,7 @@ import java.util.Random;
  * This class controls the game logic and communications with
  * another GameController over the network.
  * 
- * This class is not thread safe. ll calls to this class MUST be
+ * This class is not thread safe. All calls to this class MUST be
  * made from the swing event dispatch thread
  * 
  * @author James
@@ -72,11 +72,6 @@ public class GameController
 	private boolean myTurnFirst;
 	
 	/**
-	 * True if it is currently my turn
-	 */
-	private boolean myTurn;
-	
-	/**
 	 * The current state of the game
 	 * 
 	 * @author James
@@ -111,7 +106,7 @@ public class GameController
 	 * @param myName this controller's player name
 	 * @param isMaster true if this controller is the master
 	 */
-	public GameController(SocketChannel channel, GameOutput output,
+	public GameController(SocketChannel channel, final GameOutput output,
 			String myName, boolean isMaster) throws IOException
 	{
 		//validate parameters
@@ -151,9 +146,7 @@ public class GameController
 			@Override
 			protected void eventSwingError(Exception e)
 			{
-				//TODO Exceptions to handle
-				// IOException - Connection Reset
-				// BufferOverflowException - Bad Message
+				raiseGameError(e);
 			}
 
 			@Override
@@ -165,22 +158,15 @@ public class GameController
 					return;
 				}
 				
-				//TODO should the errors here be thrown as exceptions and handled in eventSwingError???
-				
-				//What command?
-				switch(buffer.get())
+				//Accept INIT when in correct state only
+				if(state == GameState.InitWaiting)
 				{
-					case CMD_INIT:
-						//Ignore if not waiting for INIT
-						if(state != GameState.InitWaiting)
-						{
-							break;
-						}
-					
+					if(buffer.get() == CMD_INIT)
+					{
 						//Get version
 						if(buffer.getInt() != PROTOCOL_VERSION)
 						{
-							//TODO Send back error
+							throw new GameControllerException("Both players must be using the same Squares version");
 						}
 						
 						//Get master status
@@ -190,15 +176,11 @@ public class GameController
 						if((masterStatus == NOT_MASTER && otherMasterStatus == NOT_MASTER) ||
 							(masterStatus != NOT_MASTER && otherMasterStatus != NOT_MASTER))
 						{
-							//TODO Invalid combination
+							throw new GameControllerException("Failed to select master computer");
 						}
 						
 						//Get player name
 						String otherName = decodeString(buffer);
-						if(otherName == null)
-						{
-							//TODO malformed string
-						}
 						
 						//Is it my turn first?
 						if(masterStatus == NOT_MASTER)
@@ -225,18 +207,21 @@ public class GameController
 						state = GameState.Ready;
 						
 						//TODO raise ready event
-						break;
-						
+					}
+					else
+					{
+						throw new GameControllerException("Unexpected INIT message received");
+					}
+					
+					return;
+				}
+				
+				//What command?
+				switch(buffer.get())
+				{
 					case CMD_CHAT:
-						//Extract chat message
-						String msg = decodeString(buffer);
-						
-						if(msg == null)
-						{
-							//TODO malformed string
-						}
-						
-						//TODO output message
+						//Output chat message
+						output.gameChat(decodeString(buffer));
 						break;
 				}
 			}
@@ -283,9 +268,37 @@ public class GameController
 		//
 	}
 	
+	/**
+	 * Closes the connection with the other game controller
+	 * 
+	 * If playing a game, surrenders first
+	 */
 	public void close()
 	{
-		//
+		//Ignore if closed
+		if(conn.isConnected())
+		{
+			//Surrender first if playing
+			if(state == GameState.Playing)
+			{
+				try
+				{
+					conn.sendMsg(ByteBuffer.wrap(new byte[] { CMD_SURRENDER }));
+				}
+				catch(IOException e)
+				{
+				}
+			}
+			
+			try
+			{	
+				//Close connection
+				conn.close();
+			}
+			catch(IOException e)
+			{
+			}
+		}
 	}
 	
 	public boolean move()
@@ -317,20 +330,90 @@ public class GameController
 		buf.flip();
 		
 		//Send message
-		ensureConnected();
-		conn.sendMsg(buf);
+		sendMsgSecure(buf);
 		return true;
 	}
 	
 	/**
-	 * Throws IllegalStateException if not connected
+	 * Raises the game error e to the game output
+	 * 
+	 * This will close everything down (all errors are unrecoverable)
+	 * 
+	 * @param e exception to report to output
 	 */
-	private void ensureConnected()
+	private void raiseGameError(Exception e)
 	{
-		if(!conn.isConnected() || state == GameState.InitWaiting)
+		GameControllerException wrapped;
+		
+		//What sort of error?
+		if(e instanceof GameControllerException)
 		{
-			throw new IllegalStateException("controller is not connected");
+			//Do not wrap
+			wrapped = (GameControllerException) e;
 		}
+		else if(e instanceof IOException)
+		{
+			//Network error
+			wrapped = new GameControllerException("Network Error:\n" + e.getMessage(), e);
+		}
+		else if(e instanceof BufferUnderflowException)
+		{
+			//Protocol error - not enough bytes
+			wrapped = new GameControllerException("Bad message from other controller", e);
+		}
+		else if(e instanceof CharacterCodingException)
+		{
+			//Malformed String
+			wrapped = new GameControllerException("Malformed string received", e);
+		}
+		else
+		{
+			//Generic wrap
+			wrapped = new GameControllerException("Error:\n" + e.getMessage(), e);
+		}
+		
+		//Report error to game output
+		this.output.gameError(wrapped);
+		
+		//Close connection (ignore any errors)
+		try
+		{
+			this.conn.close();
+		}
+		catch (IOException e1)
+		{
+		}
+	}
+	
+	/**
+	 * Sends a message over the connection while handling any exceptions
+	 * 
+	 * @param buffer message to send
+	 * @return true if no exceptions were thrown
+	 */
+	private boolean sendMsgSecure(ByteBuffer buffer)
+	{
+		//Must not be waiting for init
+		if(state == GameState.InitWaiting)
+		{
+			//Not finished connecting
+			raiseGameError(new IllegalStateException("controller has not finished connection process"));
+			return false;
+		}
+		
+		try
+		{
+			//Send message
+			this.conn.sendMsg(buffer);
+		}
+		catch (IOException e)
+		{
+			//Raise error
+			raiseGameError(e);
+			return false;
+		}
+		
+		return true;
 	}
 	
 	private static final CharsetEncoder strEncoder = Charset.forName("UTF-8").newEncoder();
@@ -378,19 +461,11 @@ public class GameController
 	 * Decodes the given buffer (encoded in UTF-8) into a string
 	 * 
 	 * @param buffer buffer to decode
-	 * @return the string or null if the string is malformed
+	 * @return the string
 	 */
-	private static String decodeString(ByteBuffer buffer)
+	private static String decodeString(ByteBuffer buffer) throws CharacterCodingException
 	{
-		try
-		{
-			//Decode buffer and return string
-			return strDecoder.decode(buffer).toString();
-		}
-		catch (CharacterCodingException e)
-		{
-			//Return null (error)
-			return null;
-		}
+		//Decode buffer and return string
+		return strDecoder.decode(buffer).toString();
 	}
 }
