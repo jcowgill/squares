@@ -276,6 +276,42 @@ public class GameController
 						
 						break;
 						
+					case CMD_MOVE:
+						//Other player makes a move
+						if(controlState != ControllerState.Playing)
+						{
+							//Illegal request
+							throw new GameControllerException("Unexpected MOVE message received");
+						}
+						
+						//Read move info
+						boolean isLeft = buffer.get() == 1;
+						int x = buffer.getInt();
+						int y = buffer.getInt();
+						
+						//Make the move
+						boolean moveAgain = false;
+						switch(gameState.move(playerNum ^ 3,  x, y, isLeft))
+						{
+							case OkAgain:
+								moveAgain = true;
+								
+								//Fallthrough
+							case Ok:
+								//TODO notify output
+								
+								//Check for win condition
+								processWinCondition();
+								break;
+								
+							default:
+							case Illegal:
+								//This move cannot be made!
+								throw new GameControllerException("Data Inconsistency (hacking attempt?)");
+						}
+						
+						break;
+						
 					case CMD_WIN:
 						//Other player has claimed the win
 						if(controlState != ControllerState.Playing)
@@ -359,15 +395,16 @@ public class GameController
 		buf.putInt(score[1]);
 		buf.flip();
 		
-		sendMsgSecure(buf);
-		
-		//Ready to play now?
-		if(controlState == ControllerState.ReadyPlayReceived)
+		if(sendMsgSecure(buf))
 		{
-			//Game has started
-			controlState = ControllerState.Playing;
-			
-			//TODO Notify output
+			//Ready to play now?
+			if(controlState == ControllerState.ReadyPlayReceived)
+			{
+				//Game has started
+				controlState = ControllerState.Playing;
+				
+				//TODO Notify output
+			}
 		}
 	}
 	
@@ -390,14 +427,11 @@ public class GameController
 		if(gameState.canWinNow(playerNum))
 		{
 			//Send WIN command
-			sendMsgSecure(ByteBuffer.wrap(new byte[] { CMD_WIN }));
-
-			//Game ended
-			gameState = null;
-			controlState = ControllerState.Ready;
-
-			//Game ended
-			gameEnded(true, true);
+			if(sendMsgSecure(ByteBuffer.wrap(new byte[] { CMD_WIN })))
+			{
+				gameEnded(true, true);
+			}
+			
 			return true;
 		}
 		else
@@ -420,10 +454,11 @@ public class GameController
 		}
 		
 		//Send surrender
-		sendMsgSecure(ByteBuffer.wrap(new byte[] { CMD_SURRENDER }));
-		
-		//Game ended
-		gameEnded(false, true);
+		if(sendMsgSecure(ByteBuffer.wrap(new byte[] { CMD_SURRENDER })))
+		{
+			//Game ended
+			gameEnded(false, true);
+		}
 	}
 	
 	/**
@@ -459,9 +494,57 @@ public class GameController
 		}
 	}
 	
-	public boolean move()
+	/**
+	 * Attempts to make the given move
+	 * 
+	 * You give the coordinates of the square below or to the right of the line.
+	 * 
+	 * @param x x position of grid square
+	 * @param y y position of grid square
+	 * @param isLeft true if the move is for the left line. false for the top.
+	 * @return false if the move was illegal or if it is not your turn
+	 */
+	public boolean move(int x, int y, boolean isLeft)
 	{
-		//
+		//In a game?
+		if(controlState != ControllerState.Playing)
+		{
+			throw new IllegalStateException("controller is not currently playing a game");
+		}
+		
+		//Try to make the move
+		boolean moveAgain = false;
+		switch(gameState.move(playerNum, x, y, isLeft))
+		{
+			case OkAgain:
+				moveAgain = true;
+				
+				//Fallthrough
+				
+			case Ok:
+				//Send move to other controller
+				ByteBuffer buf = ByteBuffer.allocate(10);
+				buf.put(CMD_MOVE);
+				buf.put((byte) (isLeft ? 1 : 0));
+				buf.putInt(x);
+				buf.putInt(y);
+				buf.flip();
+				
+				if(sendMsgSecure(buf))
+				{
+					//TODO Notify output
+					
+					//Has game been won?
+					processWinCondition();
+				}
+				
+				return true;
+				
+			default:
+			case Illegal:
+				//Illegal move
+				return false;
+		}
 	}
 	
 	/**
@@ -490,6 +573,36 @@ public class GameController
 		//Send message
 		sendMsgSecure(buf);
 		return true;
+	}
+	
+	/**
+	 * Determines if a player has won and ends the game if they have
+	 */
+	private void processWinCondition()
+	{
+		//Has game been won?
+		if(gameState.isComplete())
+		{
+			//Calculate winner
+			// If it is a draw, the person going second wins
+			boolean iWon;
+			int firstPlayer = player1First ? 1 : 2;
+			int secondPlayer = player1First ? 2 : 1;
+			
+			if(gameState.getScore(firstPlayer) > gameState.getScore(secondPlayer))
+			{
+				//First player won
+				iWon = (playerNum == 1);
+			}
+			else
+			{
+				//Second player won
+				iWon = (playerNum == 2);
+			}
+			
+			//End game
+			gameEnded(iWon, false);
+		}
 	}
 	
 	/**

@@ -149,7 +149,11 @@ public class GameState
 		}
 		
 		//If we're here, the move was good
-		player1Turn = !player1Turn;
+		if(res == MoveResult.Ok)
+		{
+			player1Turn = !player1Turn;
+		}
+		
 		return res;
 	}
 	
