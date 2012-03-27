@@ -24,4 +24,19 @@ public interface GameOutput
 	 * @param str the text that was sent
 	 */
 	public void gameChat(String str);
+	
+	/**
+	 * Called when a new game is started
+	 */
+	public void gameStart();
+	
+	/**
+	 * Called when the game has been completed
+	 * 
+	 * @param youWon true if you won
+	 * @param premature true if the game was ended early (ie: clicking WIN or SURRENDER)
+	 * @param player1Score the score for player 1
+	 * @param player2Score the score for player 2
+	 */
+	public void gameEnd(boolean youWon, boolean premature, int player1Score, int player2Score);
 }

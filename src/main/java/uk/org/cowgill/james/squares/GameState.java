@@ -154,14 +154,22 @@ public class GameState
 	}
 	
 	/**
-	 * Returns true if the given player has enough squares to win immediately
+	 * Returns true if the given player can win immediately
 	 * 
 	 * @param player player to check
 	 * @return true if the player can win NOW
 	 */
 	public boolean canWinNow(int player)
 	{
-		return 2 * score[player] > size * size;
+		//Must be their turn and have enough squares
+		if(player1Turn == (player == 1))
+		{
+			return 2 * score[player - 1] > size * size;
+		}
+		else
+		{
+			return false;
+		}
 	}
 	
 	/**

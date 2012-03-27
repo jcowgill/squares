@@ -57,26 +57,41 @@ public class GameController
 	private final GameOutput output;
 	
 	/**
+	 * The player number of this player (1 or 2)
+	 */
+	private final int playerNum;
+	
+	/**
+	 * Player scores (games won)
+	 */
+	private final int[] score = new int[2];
+	
+	/**
 	 * Names of players
 	 */
 	private String[] playerNames = new String[2];
 	
 	/**
-	 * The current state of the game
+	 * The controller state
 	 */
-	private GameState state = GameState.InitWaiting;
+	private ControllerState controlState = ControllerState.InitWaiting;
 	
 	/**
-	 * True if I started first this game (or for the next game if state == Ready)
+	 * True if player 1 started first this game (or for the next game if state == Ready)
 	 */
-	private boolean myTurnFirst;
+	private boolean player1First;
 	
 	/**
-	 * The current state of the game
+	 * Contains the state of the current game of squares (null unless controlState == Playing)
+	 */
+	private GameState gameState;
+	
+	/**
+	 * The controller state
 	 * 
 	 * @author James
 	 */
-	private enum GameState
+	private enum ControllerState
 	{
 		/**
 		 * Controller is waiting for an INIT message from the other player
@@ -85,8 +100,15 @@ public class GameController
 		
 		/**
 		 * Controller is ready to start a new game
+		 * 
+		 * If gameState != null, we have send a start game request.
 		 */
 		Ready,
+		
+		/**
+		 * Controller has received and verified a start game request from the other controller
+		 */
+		ReadyPlayReceived,
 		
 		/**
 		 * A game is in progress
@@ -138,7 +160,8 @@ public class GameController
 		
 		//Store output and name
 		this.output = output;
-		playerNames[0] = myName;
+		playerNames[isMaster ? 0 : 1] = myName;
+		playerNum = isMaster ? 1 : 2;
 		
 		//Create message controller
 		conn = new SwingMessageConnection(channel)
@@ -159,7 +182,7 @@ public class GameController
 				}
 				
 				//Accept INIT when in correct state only
-				if(state == GameState.InitWaiting)
+				if(controlState == ControllerState.InitWaiting)
 				{
 					if(buffer.get() == CMD_INIT)
 					{
@@ -185,26 +208,25 @@ public class GameController
 						//Is it my turn first?
 						if(masterStatus == NOT_MASTER)
 						{
-							myTurnFirst = (otherMasterStatus == MASTER_YOU_FIRST);
+							player1First = (otherMasterStatus == MASTER_YOU_FIRST);
 						}
 						else
 						{
-							myTurnFirst = (otherMasterStatus == MASTER_ME_FIRST);
+							player1First = (masterStatus == MASTER_ME_FIRST);
 						}
 						
 						//Store player names
-						if(myTurnFirst)
+						if(masterStatus == NOT_MASTER)
 						{
 							playerNames[1] = otherName;
 						}
 						else
 						{
-							playerNames[1] = playerNames[0];
 							playerNames[0] = otherName;
 						}
 						
 						//Ready to start
-						state = GameState.Ready;
+						controlState = ControllerState.Ready;
 						
 						//TODO raise ready event
 					}
@@ -219,6 +241,75 @@ public class GameController
 				//What command?
 				switch(buffer.get())
 				{
+					case CMD_PLAY:
+						//Other player is ready to start
+						if(controlState != ControllerState.Ready)
+						{
+							//Illegal request
+							throw new GameControllerException("Unexpected PLAY message received");
+						}
+						
+						//Validate message details
+						boolean otherPlayer1First = (buffer.get() != 0);
+						int otherScore0 = buffer.getInt();
+						int otherScore1 = buffer.getInt();
+						
+						if(player1First != otherPlayer1First || otherScore0 != score[0] || otherScore1 != score[1])
+						{
+							//Inconsistancy
+							throw new GameControllerException("Data Inconsistency (hacking attempt?)");
+						}
+						
+						//Continue
+						if(gameState == null)
+						{
+							//Mark received
+							controlState = ControllerState.ReadyPlayReceived;
+						}
+						else
+						{
+							//Game has started
+							controlState = ControllerState.Playing;
+							
+							//TODO Notify output
+						}
+						
+						break;
+						
+					case CMD_WIN:
+						//Other player has claimed the win
+						if(controlState != ControllerState.Playing)
+						{
+							//Illegal request
+							throw new GameControllerException("Unexpected WIN message received");
+						}
+						
+						//Can they win?
+						// The ^3 here swaps 1 with 2
+						if(gameState.canWinNow(playerNum ^ 3))
+						{
+							//Game ended
+							gameEnded(true, true);
+						}
+						else
+						{
+							throw new GameControllerException("Data Inconsistency (hacking attempt?)");
+						}
+						
+						break;
+						
+					case CMD_SURRENDER:
+						//Other player has surrended
+						if(controlState != ControllerState.Playing)
+						{
+							//Ignore
+							break;
+						}
+
+						//Game ended
+						gameEnded(false, true);
+						break;
+				
 					case CMD_CHAT:
 						//Output chat message
 						output.gameChat(decodeString(buffer));
@@ -245,9 +336,39 @@ public class GameController
 		conn.sendMsg(buf);
 	}
 	
+	/**
+	 * Begins a new game of squares
+	 */
 	public void startGame()
 	{
-		//
+		//Must be ready first
+		if(controlState != ControllerState.Ready ||
+				controlState != ControllerState.ReadyPlayReceived || gameState != null)
+		{
+			throw new IllegalStateException("controller is not ready to start a new game");
+		}
+		
+		//Create new game state
+		gameState = new GameState(8, player1First);
+		
+		//Send PLAY request
+		ByteBuffer buf = ByteBuffer.allocate(10);
+		buf.put(CMD_PLAY);
+		buf.put((byte) (player1First ? 1 : 0));
+		buf.putInt(score[0]);
+		buf.putInt(score[1]);
+		buf.flip();
+		
+		sendMsgSecure(buf);
+		
+		//Ready to play now?
+		if(controlState == ControllerState.ReadyPlayReceived)
+		{
+			//Game has started
+			controlState = ControllerState.Playing;
+			
+			//TODO Notify output
+		}
 	}
 	
 	/**
@@ -255,17 +376,54 @@ public class GameController
 	 *
 	 * If you're opponent cannot possibly get enough squares, this allows you to win immediately
 	 *
-	 * @param text text to send
-	 * @return false if you cannot win the game immediately
+	 * @return false if you cannot win at this time
 	 */
 	public boolean win()
 	{
-		//
+		//In a game?
+		if(controlState != ControllerState.Playing)
+		{
+			throw new IllegalStateException("controller is not currently playing a game");
+		}
+		
+		//Can win?
+		if(gameState.canWinNow(playerNum))
+		{
+			//Send WIN command
+			sendMsgSecure(ByteBuffer.wrap(new byte[] { CMD_WIN }));
+
+			//Game ended
+			gameState = null;
+			controlState = ControllerState.Ready;
+
+			//Game ended
+			gameEnded(true, true);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
 	}
 	
+	/**
+	 * Surrenders the current game
+	 * 
+	 * If a game is in progress, you can always do this
+	 */
 	public void surrender()
 	{
-		//
+		//In a game?
+		if(controlState != ControllerState.Playing)
+		{
+			throw new IllegalStateException("controller is not currently playing a game");
+		}
+		
+		//Send surrender
+		sendMsgSecure(ByteBuffer.wrap(new byte[] { CMD_SURRENDER }));
+		
+		//Game ended
+		gameEnded(false, true);
 	}
 	
 	/**
@@ -279,7 +437,7 @@ public class GameController
 		if(conn.isConnected())
 		{
 			//Surrender first if playing
-			if(state == GameState.Playing)
+			if(controlState == ControllerState.Playing)
 			{
 				try
 				{
@@ -332,6 +490,32 @@ public class GameController
 		//Send message
 		sendMsgSecure(buf);
 		return true;
+	}
+	
+	/**
+	 * Called to end the current game
+	 * 
+	 * @param iWon true if i won
+	 * @param premature true if the game ended prematurly
+	 */
+	private void gameEnded(boolean iWon, boolean premature)
+	{
+		//Wipe game state
+		gameState = null;
+		controlState = ControllerState.Ready;
+		
+		//Update scores
+		if(iWon)
+		{
+			score[playerNum - 1]++;
+		}
+		else
+		{
+			score[(playerNum ^ 3) - 1]++;
+		}
+		
+		//Notify output
+		output.gameEnd(iWon, premature, score[0], score[1]);
 	}
 	
 	/**
@@ -394,7 +578,7 @@ public class GameController
 	private boolean sendMsgSecure(ByteBuffer buffer)
 	{
 		//Must not be waiting for init
-		if(state == GameState.InitWaiting)
+		if(controlState == ControllerState.InitWaiting)
 		{
 			//Not finished connecting
 			raiseGameError(new IllegalStateException("controller has not finished connection process"));
