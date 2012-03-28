@@ -228,7 +228,8 @@ public class GameController
 						//Ready to start
 						controlState = ControllerState.Ready;
 						
-						//TODO raise ready event
+						//Raise ready event
+						output.gameStartup();
 					}
 					else
 					{
@@ -271,7 +272,8 @@ public class GameController
 							//Game has started
 							controlState = ControllerState.Playing;
 							
-							//TODO Notify output
+							//Notify output
+							output.gameStart(gameState);
 						}
 						
 						break;
@@ -298,7 +300,8 @@ public class GameController
 								
 								//Fallthrough
 							case Ok:
-								//TODO notify output
+								//Notify output
+								output.gameMove(gameState, !moveAgain);
 								
 								//Check for win condition
 								processWinCondition();
@@ -350,14 +353,32 @@ public class GameController
 						//Output chat message
 						output.gameChat(decodeString(buffer));
 						break;
+
+					case CMD_ERROR:
+						//Error reported by other controller
+						throw new GameControllerException("Error reported by other controller");
+						
+					default:
+						//Invalid message
+						throw new GameControllerException("invalid message received");
 				}
 			}
 
 			@Override
 			protected void eventSwingClosed() throws Exception
 			{
-				// TODO Auto-generated method stub
+				//Close game
+				ControllerState oldState = controlState;
+				controlState = ControllerState.InitWaiting;
 				
+				//Surrended?
+				if(oldState == ControllerState.Playing)
+				{
+					gameEnded(true, true);
+				}
+				
+				//Notify of final closure
+				output.gameClosed();
 			}
 		};
 		
@@ -403,7 +424,8 @@ public class GameController
 				//Game has started
 				controlState = ControllerState.Playing;
 				
-				//TODO Notify output
+				//Notify output
+				output.gameStart(gameState);
 			}
 		}
 	}
@@ -474,6 +496,7 @@ public class GameController
 			//Surrender first if playing
 			if(controlState == ControllerState.Playing)
 			{
+				//Send message
 				try
 				{
 					conn.sendMsg(ByteBuffer.wrap(new byte[] { CMD_SURRENDER }));
@@ -491,6 +514,17 @@ public class GameController
 			catch(IOException e)
 			{
 			}
+			
+			//Send events to client
+			ControllerState oldState = controlState;
+			controlState = ControllerState.InitWaiting;
+			
+			if(oldState == ControllerState.Playing)
+			{
+				gameEnded(false, true);
+			}
+			
+			output.gameClosed();
 		}
 	}
 	
@@ -532,7 +566,8 @@ public class GameController
 				
 				if(sendMsgSecure(buf))
 				{
-					//TODO Notify output
+					//Notify output
+					output.gameMove(gameState, moveAgain);
 					
 					//Has game been won?
 					processWinCondition();
@@ -667,6 +702,15 @@ public class GameController
 		{
 			//Generic wrap
 			wrapped = new GameControllerException("Error:\n" + e.getMessage(), e);
+		}
+		
+		//Send error message
+		try
+		{
+			this.conn.sendMsg(ByteBuffer.wrap(new byte[] { CMD_ERROR }));
+		}
+		catch(IOException e1)
+		{
 		}
 		
 		//Report error to game output

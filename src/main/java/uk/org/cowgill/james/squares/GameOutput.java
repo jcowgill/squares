@@ -10,6 +10,16 @@ package uk.org.cowgill.james.squares;
 public interface GameOutput
 {
 	/**
+	 * Called when the connection to the other controller is established
+	 */
+	public void gameStartup();
+	
+	/**
+	 * Called when the connection is closed properly
+	 */
+	public void gameClosed();
+	
+	/**
 	 * Called when an error occurs within the game controller
 	 * 
 	 * All errors reported here are unrecoverable.
@@ -26,9 +36,19 @@ public interface GameOutput
 	public void gameChat(String str);
 	
 	/**
-	 * Called when a new game is started
+	 * Called when a new game has been started
+	 * 
+	 * @param state the state of the game (do not modify)
 	 */
-	public void gameStart();
+	public void gameStart(GameState state);
+	
+	/**
+	 * Called after a move has been made
+	 * 
+	 * @param state the state of the game (do not modify)
+	 * @param yourMove it is your move now
+	 */
+	public void gameMove(GameState state, boolean yourMove);
 	
 	/**
 	 * Called when the game has been completed
