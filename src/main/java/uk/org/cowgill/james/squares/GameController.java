@@ -273,7 +273,7 @@ public class GameController
 							controlState = ControllerState.Playing;
 							
 							//Notify output
-							output.gameStart(gameState);
+							output.gameStart(gameState, (playerNum == 1) == player1First);
 						}
 						
 						break;
@@ -394,6 +394,31 @@ public class GameController
 	}
 	
 	/**
+	 * Gets the names of the players
+	 * 
+	 * @param player player number
+	 * @return the name of the player
+	 */
+	public String getPlayerName(int player)
+	{
+		//Not if connecting
+		if(controlState == ControllerState.InitWaiting)
+		{
+			throw new IllegalStateException("controller is not connected");
+		}
+		
+		return playerNames[player - 1];
+	}
+	
+	/**
+	 * Returns true if a game is in progress
+	 */
+	public boolean isPlaying()
+	{
+		return controlState == ControllerState.Playing;
+	}
+	
+	/**
 	 * Begins a new game of squares
 	 */
 	public void startGame()
@@ -425,7 +450,7 @@ public class GameController
 				controlState = ControllerState.Playing;
 				
 				//Notify output
-				output.gameStart(gameState);
+				output.gameStart(gameState, (playerNum == 1) == player1First);
 			}
 		}
 	}
@@ -664,6 +689,9 @@ public class GameController
 		
 		//Notify output
 		output.gameEnd(iWon, premature, score[0], score[1]);
+		
+		//Change player going first
+		player1First = !player1First;
 	}
 	
 	/**

@@ -8,7 +8,14 @@ import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Stroke;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.channels.SocketChannel;
+
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -26,7 +33,7 @@ import javax.swing.event.MouseInputAdapter;
  * 
  * @author james
  */
-public class PanelGame extends JPanel
+public class PanelGame extends JPanel implements GameOutput
 {
 	private static final long serialVersionUID = 1L;
 
@@ -45,8 +52,11 @@ public class PanelGame extends JPanel
 	 * Creates a panel for the game screen
 	 * 
 	 * @param rootPane root pane to set default button of (or null)
+	 * @param channel connection to other player
+	 * @param myName my player name
+	 * @param isMaster true if this computer is the host
 	 */
-	public PanelGame(JRootPane rootPane, GameController ctrl)
+	public PanelGame(JRootPane rootPane, SocketChannel channel, String myName, boolean isMaster) throws IOException
 	{
 		setLayout(new BorderLayout(0, 0));
 		
@@ -55,10 +65,12 @@ public class PanelGame extends JPanel
 		panel1.setLayout(new FlowLayout(FlowLayout.CENTER, 5, 5));
 		
 		lblPlayer[0] = new JLabel("Player 1");
+		lblPlayer[0].setForeground(Color.BLUE);
 		lblPlayer[0].setHorizontalAlignment(SwingConstants.RIGHT);
 		panel1.add(lblPlayer[0]);
 		
 		lblScore[0] = new JLabel("0");
+		lblScore[0].setForeground(Color.BLUE);
 		lblScore[0].setHorizontalAlignment(SwingConstants.CENTER);
 		lblScore[0].setPreferredSize(new Dimension(32, 15));
 		panel1.add(lblScore[0]);
@@ -69,11 +81,13 @@ public class PanelGame extends JPanel
 		panel1.add(separator);
 		
 		lblScore[1] = new JLabel("0");
+		lblScore[1].setForeground(Color.RED);
 		lblScore[1].setHorizontalAlignment(SwingConstants.CENTER);
 		lblScore[1].setPreferredSize(new Dimension(32, 15));
 		panel1.add(lblScore[1]);
 
 		lblPlayer[1] = new JLabel("Player 2");
+		lblPlayer[1].setForeground(Color.RED);
 		panel1.add(lblPlayer[1]);
 		
 		add(panel1, BorderLayout.NORTH);
@@ -103,29 +117,136 @@ public class PanelGame extends JPanel
 			rootPane.setDefaultButton(sendButton);
 		}
 		
-		//Controller
-		this.ctrl = ctrl;
-	}
-
-	/**
-	 * Appends a line of text to the chat area
-	 * 
-	 * @param str text to append
-	 */
-	public void appendTextArea(String str)
-	{
-		chatOut.append("\n");
-		chatOut.append(str);
+		//Create controller
+		this.ctrl = new GameController(channel, this, myName, isMaster);
+		
+		//Send button handler
+		this.sendButton.addActionListener(new ActionListener()
+		{
+			@Override
+			public void actionPerformed(ActionEvent e)
+			{
+				//Button pressed
+				String text = textField.getText().trim();
+				textField.setText("");
+				
+				//Builtin command?
+				if(text.startsWith("/win"))
+				{
+					//Send win command
+					if(!ctrl.win())
+					{
+						chatOut.append("\nYou cannot win yet.");
+					}
+				}
+				else if(text.startsWith("/surrender"))
+				{
+					//Surrender
+					ctrl.surrender();
+				}
+				else if(text.startsWith("/play"))
+				{
+					//Start new game
+					if(!ctrl.isPlaying())
+					{
+						ctrl.startGame();
+					}
+				}
+				else
+				{
+					//Send chat text
+					ctrl.chat(text);
+				}
+			}
+		});
+		
+		//Disable controls for initialization
+		sendButton.setEnabled(false);
+		textField.setEnabled(false);
+		chatOut.setEditable(false);
+		
+		//Print init message
+		chatOut.append("Connecting...");
 	}
 	
-	/**
-	 * Refreshes the game content to match the information in the game state object
-	 */
-	public void updateGameState()
+	@Override
+	public void gameStartup()
 	{
-		//TODO Update names
-		//TODO Update scores
-		//TODO Repaint game area
+		//Connected
+		lblPlayer[0].setText(ctrl.getPlayerName(1));
+		lblPlayer[1].setText(ctrl.getPlayerName(2));
+		chatOut.append("\nConnected.\nType /play to start a new game.");
+		sendButton.setEnabled(true);
+		textField.setEnabled(true);
+	}
+
+	@Override
+	public void gameClosed()
+	{
+		//Connection Closed
+		chatOut.append("\nConnection Closed.");
+		sendButton.setEnabled(false);
+		textField.setEnabled(false);
+	}
+
+	@Override
+	public void gameError(GameControllerException e)
+	{
+		//Connection error
+		// Get exception text
+		StringWriter writer = new StringWriter();
+		PrintWriter pWriter = new PrintWriter(writer);
+		e.printStackTrace(pWriter);
+		pWriter.close();
+		
+		//Print message
+		chatOut.append("\nException thrown by game controller:\n" + writer.toString());
+		sendButton.setEnabled(false);
+		textField.setEnabled(false);
+	}
+
+	@Override
+	public void gameChat(String str)
+	{
+		chatOut.append("\n> ");
+		chatOut.append(str);
+	}
+
+	@Override
+	public void gameStart(GameState state, boolean yourMove)
+	{
+		//New game has started
+		chatOut.append("\nGame Started" + 
+						"\n Click the lines on the screen to make your move" +
+						"\n /win allows you to win now if your opponent cannot possibly win" + 
+						"\n /surrender allows you to surrender\n");
+		this.gameCanvas.setGameState(state, yourMove);
+	}
+
+	@Override
+	public void gameMove(GameState state, boolean yourMove)
+	{
+		//Update game canvas
+		gameCanvas.moveComplete(yourMove);
+	}
+
+	@Override
+	public void gameEnd(boolean youWon, boolean premature, int player1Score,
+			int player2Score)
+	{
+		//Game status
+		if(youWon)
+		{
+			chatOut.append("\nYou Won!");
+		}
+		else
+		{
+			chatOut.append("\nYou Lost.");
+		}
+		
+		//Show score
+		chatOut.append("\n The score is now " + player1Score + "-" + player2Score);
+		chatOut.append("\n Type /play to start again");
 	}
 	
 	/**
@@ -155,7 +276,8 @@ public class PanelGame extends JPanel
 		};
 		
 		//Game State
-		private GameState state = new GameState(8, true);
+		private GameState state;
+		private boolean myMove;
 		
 		//Coordinates for line to draw mouse hovering on
 		private int lastMouseX;
@@ -181,11 +303,21 @@ public class PanelGame extends JPanel
 				@Override
 				public void mouseClicked(MouseEvent e)
 				{
-					//Ensure hover is in correct position
-					mouseMoved(e);
-					
-					//TODO make move
-					repaint();
+					//My turn?
+					if(myMove)
+					{
+						//Ensure hover is in correct position
+						mouseMoved(e);
+						
+						//Make the given move
+						PanelGame.this.ctrl.move(
+								GameCanvas.this.lastMouseX,
+								GameCanvas.this.lastMouseY,
+								GameCanvas.this.lastMouseIsLeft);
+						
+						//Refresh
+						repaint();
+					}
 				}
 				
 				@Override
@@ -199,6 +331,12 @@ public class PanelGame extends JPanel
 				@Override
 				public void mouseMoved(MouseEvent e)
 				{
+					//Ignore if it's not my move
+					if(!myMove)
+					{
+						return;
+					}
+					
 					//Calulate the square and where inside the square we are
 					int x 		= (e.getX() - PADDING - DOT_SIZE / 2) / SQUARE_SIZE;
 					int xInside	= (e.getX() - PADDING - DOT_SIZE / 2) % SQUARE_SIZE;
@@ -288,13 +426,32 @@ public class PanelGame extends JPanel
 		}
 		
 		/**
+		 * Should be called after a move is completed
+		 * 
+		 * @param myMove true if it is my move now
+		 */
+		public void moveComplete(boolean myMove)
+		{
+			this.myMove = myMove;
+			repaint();
+		}
+		
+		/**
 		 * Sets the game state of this canvas
 		 * 
 		 * @param state the new state object or null to display nothing
+		 * @param myMove true if it is my move now
 		 */
-		public void setGameState(GameState state)
+		public void setGameState(GameState state, boolean myMove)
 		{
 			this.state = state;
+			this.myMove = myMove;
+			if(!myMove)
+			{
+				//Disable hover
+				this.lastMouseEnabled = false;
+			}
+			
 			repaint();
 		}
 		

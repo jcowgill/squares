@@ -39,8 +39,9 @@ public interface GameOutput
 	 * Called when a new game has been started
 	 * 
 	 * @param state the state of the game (do not modify)
+	 * @param yourMove it is your move now
 	 */
-	public void gameStart(GameState state);
+	public void gameStart(GameState state, boolean yourMove);
 	
 	/**
 	 * Called after a move has been made
