@@ -13,20 +13,25 @@ public class SquaresWindow extends JFrame
 {
 	private static final long serialVersionUID = 1L;
 
+	public SquaresWindow()
+	{
+		super("Squares");
+		
+		setContentPane(new PanelStartup(this));
+		pack();
+		setResizable(false);
+		setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+	}
+	
 	public static void main(String[] args)
 	{
-		//Test panel using frame
+		//Start main window
 		SwingUtilities.invokeLater(new Runnable(){
 
 			@Override
 			public void run()
 			{
-				JFrame frame = new JFrame("Squares Test Frame");
-				frame.setContentPane(new PanelGame(frame.getRootPane()));
-				frame.pack();
-				frame.setResizable(false);
-				frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-				frame.setVisible(true);
+				new SquaresWindow().setVisible(true);
 			}
 		});
 	}

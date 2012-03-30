@@ -17,6 +17,7 @@ import java.io.StringWriter;
 import java.nio.channels.SocketChannel;
 
 import javax.swing.JButton;
+import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JRootPane;
@@ -51,12 +52,12 @@ public class PanelGame extends JPanel implements GameOutput
 	/**
 	 * Creates a panel for the game screen
 	 * 
-	 * @param rootPane root pane to set default button of (or null)
+	 * @param window the main squares window
 	 * @param channel connection to other player
 	 * @param myName my player name
 	 * @param isMaster true if this computer is the host
 	 */
-	public PanelGame(JRootPane rootPane, SocketChannel channel, String myName, boolean isMaster) throws IOException
+	public PanelGame(JFrame window, SocketChannel channel, String myName, boolean isMaster) throws IOException
 	{
 		setLayout(new BorderLayout(0, 0));
 		
@@ -112,10 +113,7 @@ public class PanelGame extends JPanel implements GameOutput
 		add(gameCanvas, BorderLayout.CENTER);
 		
 		//Default button
-		if(rootPane != null)
-		{
-			rootPane.setDefaultButton(sendButton);
-		}
+		window.getRootPane().setDefaultButton(sendButton);
 		
 		//Create controller
 		this.ctrl = new GameController(channel, this, myName, isMaster);
