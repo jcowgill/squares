@@ -89,7 +89,7 @@ public abstract class SwingMessageConnection extends MessageConnection
 				{
 					try
 					{
-						eventRead(buffer);
+						eventSwingRead(buffer);
 					}
 					catch (Exception e)
 					{
@@ -127,7 +127,7 @@ public abstract class SwingMessageConnection extends MessageConnection
 				{
 					try
 					{
-						eventClosed();
+						eventSwingClosed();
 					}
 					catch (Exception e)
 					{

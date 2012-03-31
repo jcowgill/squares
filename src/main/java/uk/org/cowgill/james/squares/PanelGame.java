@@ -11,6 +11,8 @@ import java.awt.Stroke;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -144,16 +146,40 @@ public class PanelGame extends JPanel implements GameOutput
 				else if(text.startsWith("/play"))
 				{
 					//Start new game
-					if(!ctrl.isPlaying())
+					try
 					{
 						ctrl.startGame();
+					}
+					catch(IllegalStateException except)
+					{
+						//Cannot start game at this time
+						return;
+					}
+					
+					//Game started immediately?
+					if(!ctrl.isPlaying())
+					{
+						chatOut.append("\nWaiting for other player to accept...");
 					}
 				}
 				else
 				{
 					//Send chat text
+					chatOut.append("\n< ");
+					chatOut.append(text);
 					ctrl.chat(text);
 				}
+			}
+		});
+		
+		//Create window close helper
+		window.addWindowListener(new WindowAdapter()
+		{
+			@Override
+			public void windowClosing(WindowEvent e)
+			{
+				//Ensure controller is closed
+				ctrl.close();
 			}
 		});
 		
@@ -244,6 +270,13 @@ public class PanelGame extends JPanel implements GameOutput
 		//Show score
 		chatOut.append("\n The score is now " + player1Score + "-" + player2Score);
 		chatOut.append("\n Type /play to start again");
+		
+		//Update scores at top of page
+		lblScore[0].setText(Integer.toString(player1Score));
+		lblScore[1].setText(Integer.toString(player2Score));
+		
+		//Disable moves
+		gameCanvas.moveComplete(false);
 	}
 	
 	/**
@@ -430,6 +463,13 @@ public class PanelGame extends JPanel implements GameOutput
 		public void moveComplete(boolean myMove)
 		{
 			this.myMove = myMove;
+			
+			if(!myMove)
+			{
+				//Disable hover
+				this.lastMouseEnabled = false;
+			}
+			
 			repaint();
 		}
 		
@@ -442,14 +482,7 @@ public class PanelGame extends JPanel implements GameOutput
 		public void setGameState(GameState state, boolean myMove)
 		{
 			this.state = state;
-			this.myMove = myMove;
-			if(!myMove)
-			{
-				//Disable hover
-				this.lastMouseEnabled = false;
-			}
-			
-			repaint();
+			moveComplete(myMove);
 		}
 		
 		@Override

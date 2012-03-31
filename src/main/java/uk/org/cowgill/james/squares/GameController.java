@@ -205,24 +205,18 @@ public class GameController
 						//Get player name
 						String otherName = decodeString(buffer);
 						
-						//Is it my turn first?
-						if(masterStatus == NOT_MASTER)
-						{
-							player1First = (otherMasterStatus == MASTER_YOU_FIRST);
-						}
-						else
-						{
-							player1First = (masterStatus == MASTER_ME_FIRST);
-						}
+						//Whose turn first?
+						// Here, player 1 is the master computer
+						player1First = (masterStatus | otherMasterStatus) == MASTER_ME_FIRST;
 						
 						//Store player names
 						if(masterStatus == NOT_MASTER)
 						{
-							playerNames[1] = otherName;
+							playerNames[0] = otherName;
 						}
 						else
 						{
-							playerNames[0] = otherName;
+							playerNames[1] = otherName;
 						}
 						
 						//Ready to start
@@ -327,8 +321,8 @@ public class GameController
 						// The ^3 here swaps 1 with 2
 						if(gameState.canWinNow(playerNum ^ 3))
 						{
-							//Game ended
-							gameEnded(true, true);
+							//Game ended (I lost)
+							gameEnded(false, true);
 						}
 						else
 						{
@@ -345,8 +339,8 @@ public class GameController
 							break;
 						}
 
-						//Game ended
-						gameEnded(false, true);
+						//Game ended (I won)
+						gameEnded(true, true);
 						break;
 				
 					case CMD_CHAT:
@@ -424,8 +418,8 @@ public class GameController
 	public void startGame()
 	{
 		//Must be ready first
-		if(controlState != ControllerState.Ready ||
-				controlState != ControllerState.ReadyPlayReceived || gameState != null)
+		if(gameState != null || (controlState != ControllerState.Ready &&
+				controlState != ControllerState.ReadyPlayReceived))
 		{
 			throw new IllegalStateException("controller is not ready to start a new game");
 		}
