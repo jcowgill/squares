@@ -21,6 +21,7 @@ public class SquaresWindow extends JFrame
 		pack();
 		setResizable(false);
 		setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+		setLocationByPlatform(true);
 	}
 	
 	public static void main(String[] args)
