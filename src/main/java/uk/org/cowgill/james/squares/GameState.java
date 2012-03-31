@@ -54,7 +54,6 @@ public class GameState
 	
 	/**
 	 * Returns true if it is player 1's turn
-	 * @return
 	 */
 	public boolean isPlayer1Turn()
 	{

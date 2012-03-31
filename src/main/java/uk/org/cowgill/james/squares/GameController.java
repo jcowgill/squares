@@ -413,6 +413,14 @@ public class GameController
 	}
 	
 	/**
+	 * Returns true if this controller is player 1
+	 */
+	public boolean isPlayer1()
+	{
+		return playerNum == 1;
+	}
+	
+	/**
 	 * Begins a new game of squares
 	 */
 	public void startGame()

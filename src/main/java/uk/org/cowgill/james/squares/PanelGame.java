@@ -68,6 +68,7 @@ public class PanelGame extends JPanel implements GameOutput
 		
 		lblPlayer[0] = new JLabel("Player 1");
 		lblPlayer[0].setForeground(Color.BLUE);
+		lblPlayer[0].setBackground(Color.BLUE);
 		lblPlayer[0].setHorizontalAlignment(SwingConstants.RIGHT);
 		panel1.add(lblPlayer[0]);
 		
@@ -90,6 +91,7 @@ public class PanelGame extends JPanel implements GameOutput
 
 		lblPlayer[1] = new JLabel("Player 2");
 		lblPlayer[1].setForeground(Color.RED);
+		lblPlayer[1].setBackground(Color.RED);
 		panel1.add(lblPlayer[1]);
 		
 		add(panel1, BorderLayout.NORTH);
@@ -226,6 +228,9 @@ public class PanelGame extends JPanel implements GameOutput
 		chatOut.append("\nException thrown by game controller:\n" + writer.toString());
 		sendButton.setEnabled(false);
 		textField.setEnabled(false);
+		
+		//Update indicator
+		updatePlayerTurnIndicator(false);
 	}
 
 	@Override
@@ -233,6 +238,46 @@ public class PanelGame extends JPanel implements GameOutput
 	{
 		chatOut.append("\n> ");
 		chatOut.append(str);
+	}
+	
+	/**
+	 * Updates the inidcator for whose move it is
+	 */
+	private void updatePlayerTurnIndicator(boolean yourMove)
+	{
+		//Playing?
+		if(ctrl.isPlaying())
+		{
+			//Set whose move it is
+			if(ctrl.isPlayer1() == yourMove)
+			{
+				//Player 1's turn
+				lblPlayer[0].setOpaque(true);
+				lblPlayer[1].setOpaque(false);
+				lblPlayer[0].setForeground(Color.WHITE);
+				lblPlayer[1].setForeground(Color.RED);
+			}
+			else
+			{
+				//Player 2's turn
+				lblPlayer[0].setOpaque(false);
+				lblPlayer[1].setOpaque(true);
+				lblPlayer[0].setForeground(Color.BLUE);
+				lblPlayer[1].setForeground(Color.WHITE);
+			}
+		}
+		else
+		{
+			//Set both transparent and proper colours
+			lblPlayer[0].setOpaque(false);
+			lblPlayer[1].setOpaque(false);
+			lblPlayer[0].setForeground(Color.BLUE);
+			lblPlayer[1].setForeground(Color.RED);
+		}
+		
+		//Repaint
+		lblPlayer[0].repaint();
+		lblPlayer[1].repaint();
 	}
 
 	@Override
@@ -243,12 +288,20 @@ public class PanelGame extends JPanel implements GameOutput
 						"\n Click the lines on the screen to make your move" +
 						"\n /win allows you to win now if your opponent cannot possibly win" + 
 						"\n /surrender allows you to surrender\n");
+		
+		//Set whose move it is
+		updatePlayerTurnIndicator(yourMove);
+		
+		//Pass to canvas
 		this.gameCanvas.setGameState(state, yourMove);
 	}
 
 	@Override
 	public void gameMove(GameState state, boolean yourMove)
 	{
+		//Set whose move it is
+		updatePlayerTurnIndicator(yourMove);
+		
 		//Update game canvas
 		gameCanvas.moveComplete(yourMove);
 	}
@@ -277,6 +330,9 @@ public class PanelGame extends JPanel implements GameOutput
 		
 		//Disable moves
 		gameCanvas.moveComplete(false);
+		
+		//Update indicator
+		updatePlayerTurnIndicator(false);
 	}
 	
 	/**

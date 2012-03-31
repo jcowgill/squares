@@ -23,6 +23,19 @@
 				<showWarnings>true</showWarnings>
             </configuration>
         </plugin>
+		
+        <!-- Main Class -->
+		<plugin>
+			<groupId>org.apache.maven.plugins</groupId>
+			<artifactId>maven-jar-plugin</artifactId>
+			<configuration>
+				<archive>
+					<manifest>
+						<mainClass>uk.org.cowgill.james.squares.SquaresWindow</mainClass>
+					</manifest>
+				</archive>
+			</configuration>
+		</plugin>
     </plugins>
   </build>
 </project>
